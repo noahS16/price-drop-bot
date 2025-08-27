@@ -3,6 +3,8 @@ from playwright.async_api import async_playwright
 from bs4 import BeautifulSoup
 import requests
 import os
+from dotenv import load_dotenv
+load_dotenv()
 
 # Config from GitHub Secrets
 EVENT_URL = os.environ.get("EVENT_URL")
@@ -14,7 +16,7 @@ async def fetch_prices():
         browser = await p.chromium.launch(headless=True)
         page = await browser.new_page()
         await page.goto(EVENT_URL)
-        await page.wait_for_timeout(5000)
+        await page.wait_for_selector("span.sc-366ff4a8-1.bQzoso")
         html_content = await page.content()
         await browser.close()
 
