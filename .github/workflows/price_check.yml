@@ -29,4 +29,4 @@ jobs:
           EVENT_URL: ${{ secrets.EVENT_URL }}
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
         run: |
-          python check_prices.py
+          python main.py
