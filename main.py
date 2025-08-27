@@ -31,6 +31,8 @@ async def fetch_prices():
         
         page = await context.new_page()
         await page.goto(EVENT_URL)
+
+        await page.screenshot(path="screenshot.png", full_page=True)
         
         # Wait for the container that holds the prices
         try:
