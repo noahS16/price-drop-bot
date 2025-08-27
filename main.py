@@ -14,10 +14,13 @@ TARGET_PRICE = 800  # Your desired alert threshold
 async def fetch_prices():
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
-        page = await browser.new_page()
-        await page.set_user_agent(
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-        "(KHTML, like Gecko) Chrome/117.0.0.0 Safari/537.36")
+        context = await browser.new_context(
+        user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                   "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/117.0.0.0 Safari/537.36",
+        viewport={"width": 1280, "height": 800}
+    )
+        page = await context.new_page()
+        
         await page.goto(EVENT_URL)
         await page.wait_for_selector("span.sc-366ff4a8-1.bQzoso")
         html_content = await page.content()
