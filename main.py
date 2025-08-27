@@ -14,7 +14,7 @@ TARGET_PRICE = 800  # Your desired alert threshold
 
 async def fetch_prices():
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=False)
+        browser = await p.chromium.launch(headless=True)
         
         # Use a context with typical human browser characteristics
         context = await browser.new_context(
