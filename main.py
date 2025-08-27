@@ -9,26 +9,44 @@ load_dotenv()
 # Config from GitHub Secrets
 EVENT_URL = os.environ.get("EVENT_URL")
 DISCORD_WEBHOOK = os.environ.get("DISCORD_WEBHOOK_URL")
+print(f"Event URL: {EVENT_URL}")
 TARGET_PRICE = 800  # Your desired alert threshold
 
 async def fetch_prices():
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
-        context = await browser.new_context(
-        user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                   "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/117.0.0.0 Safari/537.36",
-        viewport={"width": 1280, "height": 800}
-    )
-        page = await context.new_page()
         
+        # Use a context with typical human browser characteristics
+        context = await browser.new_context(
+            user_agent=(
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/117.0.0.0 Safari/537.36"
+            ),
+            viewport={"width": 1280, "height": 800},
+            locale="en-US",
+            timezone_id="America/Chicago",
+            java_script_enabled=True,
+        )
+        
+        page = await context.new_page()
         await page.goto(EVENT_URL)
-        await page.wait_for_selector("span.sc-366ff4a8-1.bQzoso")
+        
+        # Wait for the container that holds the prices
+        try:
+            await page.wait_for_selector("span.sc-366ff4a8-1.bQzoso", timeout=20000)
+        except:
+            print("Selector not found; the site may be blocking headless browsers")
+            await browser.close()
+            return []
+
         html_content = await page.content()
         await browser.close()
 
+        # Parse with BeautifulSoup
         soup = BeautifulSoup(html_content, "html.parser")
         events = soup.find_all("span", class_="sc-366ff4a8-1 bQzoso")
-
+        
         prices = []
         for event in events:
             try:
@@ -37,6 +55,9 @@ async def fetch_prices():
                 prices.append(price)
             except ValueError:
                 continue
+
+        if not prices:
+            print("No prices found. The page may have loaded differently in headless mode.")
         return prices
 
 def send_discord_alert(price):
