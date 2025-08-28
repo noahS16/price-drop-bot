@@ -4,51 +4,40 @@ from bs4 import BeautifulSoup
 import requests
 import os
 from dotenv import load_dotenv
+import json
+from datetime import datetime
 load_dotenv()
 
-# Config from GitHub Secrets
+# Config
 EVENT_URL = os.environ.get("EVENT_URL")
 DISCORD_WEBHOOK = os.environ.get("DISCORD_WEBHOOK_URL")
-print(f"Event URL: {EVENT_URL}")
-TARGET_PRICE = 800  # Your desired alert threshold
+TARGET_PRICE = 800  # Desired alert threshold
+
 
 async def fetch_prices():
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
-        
-        # Use a context with typical human browser characteristics
         context = await browser.new_context(
-            user_agent=(
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/117.0.0.0 Safari/537.36"
-            ),
-            viewport={"width": 1280, "height": 800},
-            locale="en-US",
-            timezone_id="America/Chicago",
-            java_script_enabled=True,
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                       "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/117.0.0.0 Safari/537.36",
+            viewport={"width": 1280, "height": 800}
         )
-        
         page = await context.new_page()
-        await page.goto(EVENT_URL)
 
-        await page.screenshot(path="screenshot.png", full_page=True)
-        
-        # Wait for the container that holds the prices
+        await page.goto(EVENT_URL, timeout=60000)
         try:
-            await page.wait_for_selector("span.sc-366ff4a8-1.bQzoso", timeout=20000)
-        except:
-            print("Selector not found; the site may be blocking headless browsers")
+            await page.wait_for_selector("span.sc-366ff4a8-1.bQzoso", timeout=15000)
+        except Exception as e:
+            print(f"Selector not found: {e}")
             await browser.close()
             return []
 
         html_content = await page.content()
         await browser.close()
 
-        # Parse with BeautifulSoup
         soup = BeautifulSoup(html_content, "html.parser")
         events = soup.find_all("span", class_="sc-366ff4a8-1 bQzoso")
-        
+
         prices = []
         for event in events:
             try:
@@ -57,29 +46,72 @@ async def fetch_prices():
                 prices.append(price)
             except ValueError:
                 continue
-
-        if not prices:
-            print("No prices found. The page may have loaded differently in headless mode.")
         return prices
 
-def send_discord_alert(price):
-    data = {"content": f"🎸 Ticket available for ${price}! {EVENT_URL}"}
-    requests.post(DISCORD_WEBHOOK, json=data)
+
+def check_last_alerted_price():
+    if not os.path.exists("last_alerted_price.json"):
+        return 0.0
+    with open("last_alerted_price.json", "r") as file:
+        data = json.load(file)
+    return data.get("last_price", 0.0)
+
+
+def update_last_alerted_price(price):
+    with open("last_alerted_price.json", "w") as file:
+        json.dump({"last_price": price}, file)
+
+
+def send_discord_alert(message: str):
+    try:
+        resp = requests.post(DISCORD_WEBHOOK, json={"content": message}, timeout=10)
+        if resp.status_code != 204:
+            print(f"Discord webhook failed: {resp.status_code}, {resp.text}")
+    except Exception as e:
+        print(f"Error sending Discord alert: {e}")
+
 
 async def check_prices():
     prices = await fetch_prices()
     if not prices:
         print("No prices found.")
+        send_discord_alert("⚠️ No ticket prices found! LOCK IN!! 🔥")
         return
 
     lowest_price = min(prices)
+    last_alerted_price = check_last_alerted_price()
     print(f"Lowest price found: ${lowest_price}")
 
-    if lowest_price <= TARGET_PRICE:
-        send_discord_alert(lowest_price)
+    if (lowest_price <= TARGET_PRICE and
+        (last_alerted_price == 0.0 or lowest_price < last_alerted_price)) or lowest_price <= 500.0:
+
+        send_discord_alert(f"🎸 Ticket available for **${lowest_price}**!\n{EVENT_URL}")
+        update_last_alerted_price(lowest_price)
         print(f"Alert sent for ${lowest_price}!")
     else:
         print("No alert needed.")
 
+def send_daily_checkin():
+    lowest_price = check_last_alerted_price()
+    if lowest_price > 0.0:
+        send_discord_alert(f"🤑 The lowest ticket price rn is **${lowest_price}**\n{EVENT_URL}")
+    else:
+        send_discord_alert("🤑 No ticket price data yet")
+
+
+def check_time():
+    current_time = datetime.now()
+    target_hour = 22  # 10 PM
+    backup_hour = 21  # 9 PM
+
+    if current_time.hour == target_hour:
+        send_daily_checkin()
+        return
+    elif current_time.hour == backup_hour:
+        send_daily_checkin
+        return
+
+
 if __name__ == "__main__":
     asyncio.run(check_prices())
+    check_time()
