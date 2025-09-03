@@ -34,6 +34,8 @@ async def fetch_prices():
         page = await context.new_page()
 
         await page.goto(EVENT_URL, timeout=60000)
+        html = await page.content()
+        print(html[:2000])  # first 2000 chars
         try:
             await page.wait_for_selector("#quickpick-buy-button-qp-0", timeout=30000)
         except Exception as e:
