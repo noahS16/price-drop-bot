@@ -16,6 +16,11 @@ APIFY_TOKEN = os.environ.get("APIFY_TOKEN")
 apify_client = ApifyClient(APIFY_TOKEN)
 STORE_NAME = "LAST_ALERTED_PRICE_STORE"
 LAST_PRICE_KEY = "last_price"
+print(f"Target price set to: ${TARGET_PRICE}")
+print(f"Event URL: {EVENT_URL}")
+print(f"Discord Webhook: {DISCORD_WEBHOOK}")
+print(f"Apify Store: {STORE_NAME}, Key: {LAST_PRICE_KEY}")
+print(f"Apify Token: {'Set' if APIFY_TOKEN else 'Not Set'}")
 
 
 async def fetch_prices():
