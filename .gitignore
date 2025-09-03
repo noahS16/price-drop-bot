@@ -1,1 +1,3 @@
 .env
+last_alerted_price.json
+venv/

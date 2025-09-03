@@ -1,17 +1,21 @@
 import asyncio
 from playwright.async_api import async_playwright
-from bs4 import BeautifulSoup
 import requests
 import os
 from dotenv import load_dotenv
-import json
 from datetime import datetime
+from apify_client import ApifyClient
+
 load_dotenv()
 
 # Config
 EVENT_URL = os.environ.get("EVENT_URL")
 DISCORD_WEBHOOK = os.environ.get("DISCORD_WEBHOOK_URL")
-TARGET_PRICE = 800  # Desired alert threshold
+TARGET_PRICE = float(os.environ.get("TARGET_PRICE"))
+APIFY_TOKEN = os.environ.get("APIFY_TOKEN")
+apify_client = ApifyClient(APIFY_TOKEN)
+STORE_NAME = "LAST_ALERTED_PRICE_STORE"
+LAST_PRICE_KEY = "last_price"
 
 
 async def fetch_prices():
@@ -26,40 +30,48 @@ async def fetch_prices():
 
         await page.goto(EVENT_URL, timeout=60000)
         try:
-            await page.wait_for_selector("span.sc-366ff4a8-1.bQzoso", timeout=15000)
+            await page.wait_for_selector("#quickpick-buy-button-qp-0", timeout=15000)
         except Exception as e:
             print(f"Selector not found: {e}")
             await browser.close()
             return []
 
-        html_content = await page.content()
+        # html_content = await page.content()
+        # await browser.close()
+        price_txt = await page.inner_text("span.sc-366ff4a8-1.bQzoso")
         await browser.close()
 
-        soup = BeautifulSoup(html_content, "html.parser")
-        events = soup.find_all("span", class_="sc-366ff4a8-1 bQzoso")
+        # soup = BeautifulSoup(html_content, "html.parser")
+        # events = soup.find_all("span", class_="sc-366ff4a8-1.bQzoso")
 
         prices = []
-        for event in events:
-            try:
-                price_text = event.text.replace("$", "").replace(",", "")
-                price = float(price_text)
-                prices.append(price)
-            except ValueError:
-                continue
-        return prices
+        try:
+            clean_txt = price_txt.replace("$", "").replace(",", "").strip()
+            prices.append(float(clean_txt))
+        except ValueError:
+            pass
+    return prices
 
 
-def check_last_alerted_price():
-    if not os.path.exists("last_alerted_price.json"):
+# def check_last_alerted_price():
+#     if not os.path.exists("last_alerted_price.json"):
+#         return 0.0
+#     with open("last_alerted_price.json", "r") as file:
+#         data = json.load(file)
+#     return data.get("last_price", 0.0)
+def get_last_alerted_price():
+    try:
+        record = apify_client.key_value_stores.get_record(STORE_NAME, LAST_PRICE_KEY)
+        return float(record["value"]) if record else 0.0
+    except Exception as e:
+        print(f"Error fetching last alerted price: {e}")
         return 0.0
-    with open("last_alerted_price.json", "r") as file:
-        data = json.load(file)
-    return data.get("last_price", 0.0)
-
 
 def update_last_alerted_price(price):
-    with open("last_alerted_price.json", "w") as file:
-        json.dump({"last_price": price}, file)
+    try:
+        apify_client.key_value_stores.set_record(STORE_NAME, LAST_PRICE_KEY, {"value": price})
+    except Exception as e:
+        print(f"Error updating last alerted price: {e}")
 
 
 def send_discord_alert(message: str):
@@ -75,11 +87,11 @@ async def check_prices():
     prices = await fetch_prices()
     if not prices:
         print("No prices found.")
-        send_discord_alert("⚠️ No ticket prices found! LOCK IN!! 🔥")
+        send_discord_alert("⚠️ No ticket prices found! LOCK IN!! ‼️")
         return
 
     lowest_price = min(prices)
-    last_alerted_price = check_last_alerted_price()
+    last_alerted_price = get_last_alerted_price()
     print(f"Lowest price found: ${lowest_price}")
 
     if (lowest_price <= TARGET_PRICE and
@@ -92,7 +104,7 @@ async def check_prices():
         print("No alert needed.")
 
 def send_daily_checkin():
-    lowest_price = check_last_alerted_price()
+    lowest_price = get_last_alerted_price()
     if lowest_price > 0.0:
         send_discord_alert(f"🤑 The lowest ticket price rn is **${lowest_price}**\n{EVENT_URL}")
     else:
@@ -102,13 +114,9 @@ def send_daily_checkin():
 def check_time():
     current_time = datetime.now()
     target_hour = 22  # 10 PM
-    backup_hour = 21  # 9 PM
 
     if current_time.hour == target_hour:
         send_daily_checkin()
-        return
-    elif current_time.hour == backup_hour:
-        send_daily_checkin
         return
 
 
