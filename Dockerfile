@@ -5,7 +5,7 @@ COPY . ./
 
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
-RUN playwright install --with-deps
+RUN playwright install chromium --with-deps
 
 # Run
 CMD ["python", "main.py"]

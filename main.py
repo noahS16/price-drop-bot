@@ -35,7 +35,7 @@ async def fetch_prices():
 
         await page.goto(EVENT_URL, timeout=60000)
         try:
-            await page.wait_for_selector("#quickpick-buy-button-qp-0", timeout=15000)
+            await page.wait_for_selector("#quickpick-buy-button-qp-0", timeout=30000)
         except Exception as e:
             print(f"Selector not found: {e}")
             await browser.close()
@@ -43,7 +43,7 @@ async def fetch_prices():
 
         # html_content = await page.content()
         # await browser.close()
-        price_txt = await page.inner_text("span.sc-366ff4a8-1.bQzoso")
+        price_txt = await page.inner_text("#quickpick-buy-button-qp-0")
         await browser.close()
 
         # soup = BeautifulSoup(html_content, "html.parser")
@@ -96,20 +96,18 @@ async def check_prices():
         return
 
     lowest_price = min(prices)
-    last_alerted_price = get_last_alerted_price()
+    #last_alerted_price = get_last_alerted_price()
     print(f"Lowest price found: ${lowest_price}")
 
-    if (lowest_price <= TARGET_PRICE and
-        (last_alerted_price == 0.0 or lowest_price < last_alerted_price)) or lowest_price <= 500.0:
-
+    if lowest_price <= TARGET_PRICE or lowest_price <= 300.0:
         send_discord_alert(f"🎸 Ticket available for **${lowest_price}**!\n{EVENT_URL}")
-        update_last_alerted_price(lowest_price)
+        #update_last_alerted_price(lowest_price)
         print(f"Alert sent for ${lowest_price}!")
     else:
         print("No alert needed.")
 
 def send_daily_checkin():
-    lowest_price = get_last_alerted_price()
+    lowest_price = fetch_prices()[0] if fetch_prices() else 0.0
     if lowest_price > 0.0:
         send_discord_alert(f"🤑 The lowest ticket price rn is **${lowest_price}**\n{EVENT_URL}")
     else:
