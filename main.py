@@ -22,7 +22,7 @@ print(f"Discord Webhook: {DISCORD_WEBHOOK}")
 async def setup_proxy():
     async with Actor:
         proxy_config = await Actor.create_proxy_configuration(
-            groups= ["AUTO"],
+            groups= ["RESIDENTIAL"],
             country_code= 'US',
         )
         if not proxy_config:
@@ -114,8 +114,14 @@ def check_time():
     target_hour = 22  # 10 PM
     if current_time.hour == target_hour:
        asyncio.run(send_daily_checkin)
-
-
-if __name__ == "__main__":
-    asyncio.run(check_prices())
+ 
+async def main():
+    await check_prices()
     check_time()
+
+Actor.run(main)
+
+
+# if __name__ == "__main__":
+#     asyncio.run(check_prices())
+#     check_time()
