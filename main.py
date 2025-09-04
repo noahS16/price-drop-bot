@@ -13,7 +13,7 @@ load_dotenv()
 # Config
 EVENT_URL = os.environ.get("EVENT_URL")
 DISCORD_WEBHOOK = os.environ.get("DISCORD_WEBHOOK_URL")
-TARGET_PRICE = float(os.environ.get("TARGET_PRICE"))
+TARGET_PRICE = float(os.environ.get("TARGET_PRICE", "300"))
 
 print(f"Target price set to: ${TARGET_PRICE}")
 print(f"Event URL: {EVENT_URL}")
@@ -28,9 +28,9 @@ async def setup_proxy():
         if not proxy_config:
             print("Failed to create proxy configuration.")
             return None
-    proxy_url = await proxy_config.new_url()
-    Actor.log.info(f'Using proxy URL: {proxy_url}')
-    return proxy_url
+        proxy_url = await proxy_config.new_url()
+        Actor.log.info(f'Using proxy URL: {proxy_url}')
+        return proxy_url
 
 async def fetch_prices():
     proxy_url = {"server": await setup_proxy()} if os.environ.get("USE_PROXY", "true").lower() == "true" else None
@@ -101,8 +101,9 @@ async def check_prices():
         print("No alert needed.")
 
 async def send_daily_checkin():
-    lowest_price = await fetch_prices()[0] if fetch_prices() else 0.0
-    if lowest_price > 0.0:
+    prices = await fetch_prices()
+    lowest_price = prices[0] if prices else None
+    if lowest_price:
         send_discord_alert(f"🤑 The lowest ticket price rn is **${lowest_price}**\n{EVENT_URL}")
     else:
         send_discord_alert("🤑 No ticket price data yet")
@@ -112,8 +113,7 @@ def check_time():
     current_time = datetime.now()
     target_hour = 22  # 10 PM
     if current_time.hour == target_hour:
-        send_daily_checkin()
-        return
+       asyncio.run(send_daily_checkin)
 
 
 if __name__ == "__main__":
