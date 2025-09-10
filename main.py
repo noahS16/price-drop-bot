@@ -31,46 +31,50 @@ async def setup_proxy():
         proxy_url = await proxy_config.new_url()
         Actor.log.info(f'Using proxy URL: {proxy_url}')
         return proxy_url
+    
+
 
 async def fetch_prices():
     proxy_url = {"server": await setup_proxy()} if os.environ.get("USE_PROXY", "true").lower() == "true" else None
     print(f"Proxy URL: {proxy_url}")
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(
-            headless=True, 
-            proxy=proxy_url
-        )
-        context = await browser.new_context(
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                    "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/117.0.0.0 Safari/537.36",
-            viewport={"width": 1280, "height": 800},
-            extra_http_headers={"Accept-Language": "en-US,en;q=0.9",
-            "Accept-Encoding": "gzip, deflate, br"},
-        )
+    async with Actor:
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(
+                headless=Actor.config.headless, 
+                args=['--disable-gpu'],
+                proxy=proxy_url,
+            )
+            context = await browser.new_context(
+                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/117.0.0.0 Safari/537.36",
+                viewport={"width": 1280, "height": 800},
+                extra_http_headers={"Accept-Language": "en-US,en;q=0.9",
+                "Accept-Encoding": "gzip, deflate, br"},
+            )
 
-        page = await context.new_page()
+            page = await context.new_page()
 
-        await page.goto(EVENT_URL, wait_until='networkidle', timeout=60000)
-        html = await page.content()
-        print(html[:2000])  # first 2000 chars
+            await page.goto(EVENT_URL, wait_until='networkidle', timeout=60000)
+            html = await page.content()
+            print(html[:2000])  # first 2000 chars
 
-        try:
-            await page.wait_for_selector("#quickpick-buy-button-qp-0", timeout=30000)
-        except Exception as e:
-            print(f"Selector not found: {e}")
+            try:
+                await page.wait_for_selector("#quickpick-buy-button-qp-0", timeout=30000)
+            except Exception as e:
+                print(f"Selector not found: {e}")
+                await browser.close()
+                return []
+
+            price_txt = await page.inner_text("#quickpick-buy-button-qp-0")
             await browser.close()
-            return []
 
-        price_txt = await page.inner_text("#quickpick-buy-button-qp-0")
-        await browser.close()
-
-        prices = []
-        try:
-            clean_txt = price_txt.replace("$", "").replace(",", "").strip()
-            prices.append(float(clean_txt))
-        except ValueError:
-            pass
-    return prices
+            prices = []
+            try:
+                clean_txt = price_txt.replace("$", "").replace(",", "").strip()
+                prices.append(float(clean_txt))
+            except ValueError:
+                pass
+        return prices
 
 
 def send_discord_alert(message: str):
@@ -114,14 +118,10 @@ def check_time():
     target_hour = 22  # 10 PM
     if current_time.hour == target_hour:
        asyncio.run(send_daily_checkin)
- 
-async def main():
-    await check_prices()
-    check_time()
 
-# Actor.run(main)
-
+async def main() -> None:
+    await check_prices
 
 if __name__ == "__main__":
-    asyncio.run(check_prices())
+    asyncio.run(main())
     check_time()
