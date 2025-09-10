@@ -120,7 +120,7 @@ def check_time():
        asyncio.run(send_daily_checkin)
 
 async def main() -> None:
-    await check_prices
+    await check_prices()
 
 if __name__ == "__main__":
     asyncio.run(main())
