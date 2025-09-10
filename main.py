@@ -119,9 +119,9 @@ async def main():
     await check_prices()
     check_time()
 
-Actor.run(main)
+# Actor.run(main)
 
 
-# if __name__ == "__main__":
-#     asyncio.run(check_prices())
-#     check_time()
+if __name__ == "__main__":
+    asyncio.run(check_prices())
+    check_time()
