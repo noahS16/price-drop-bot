@@ -81,8 +81,8 @@ def send_discord_alert(message: str):
         print(f"Error sending Discord alert: {e}")
 
 
-async def check_prices():
-    prices = await fetch_prices()
+async def check_prices(proxy_url):
+    prices = await fetch_prices(proxy_url)
     if not prices:
         print("No prices found.")
         send_discord_alert("⚠️ No ticket prices found! LOCK IN!! ‼️")
