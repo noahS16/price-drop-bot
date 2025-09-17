@@ -1,27 +1,124 @@
+import asyncio
+from playwright.async_api import async_playwright
 import requests
+import os
+from dotenv import load_dotenv
+from datetime import datetime
+from apify_client import ApifyClient
+from apify import Actor
 
-url = "https://offeradapter.ticketmaster.com/api/ismds/event/0C0062FFBD8C2B60/facets"
-params = {
-    "show": "totalpricerange",
-    "by": "offers",
-    "q": "available",
-    "apikey": "b462oi7fic6pehcdkzony5bxhe",
-    "apisecret": "pquzpfrfz7zd2ylvtz3w5dtyse",
-    "resaleChannelId": "internal.ecommerce.consumer.desktop.web.browser.ticketmaster.us"
-}
 
-headers = {
-    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36",
-    "Accept": "*/*",
-    "Accept-Language": "en-US,en;q=0.9",
-    "Accept-Encoding": "gzip, deflate, br, zstd",
-    "Origin": "https://www.ticketmaster.com",
-    "Referer": "https://www.ticketmaster.com/",
-    "Cookie": "_gid=GA1.2.785721488.1756194722; tk-u=ZmZkYzQxYzQtZThkMy00ZWU4LTg1ODItMzczOGRlNmIxM2Iw; ...",  # <-- paste full cookie string here
-    "tmps-correlation-id": "9ed9673d-f702-414c-a785-26de3411d1ca",
-}
+load_dotenv()
 
-resp = requests.get(url, params=params, headers=headers)
+# Config
+EVENT_URL = os.environ.get("EVENT_URL")
+DISCORD_WEBHOOK = os.environ.get("DISCORD_WEBHOOK_URL")
+TARGET_PRICE = float(os.environ.get("TARGET_PRICE", "300"))
 
-print(resp.status_code)
-print(resp.text)  # or resp.json() if it's JSON
+print(f"Target price set to: ${TARGET_PRICE}")
+print(f"Event URL: {EVENT_URL}")
+print(f"Discord Webhook: {DISCORD_WEBHOOK}")
+
+async def setup_proxy():
+    proxy_config = await Actor.create_proxy_configuration(
+        groups= ["RESIDENTIAL"],
+        country_code= 'US',
+    )
+    if not proxy_config:
+        print("Failed to create proxy configuration.")
+        return None
+    proxy_url = await proxy_config.new_url()
+    Actor.log.info(f'Using proxy URL: {proxy_url}')
+    return proxy_url
+
+async def fetch_prices(proxy_url):
+    print(f"Proxy URL: {proxy_url}")
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(
+            headless=Actor.config.headless, 
+            args=['--disable-gpu'],
+            proxy=proxy_url,
+        )
+        context = await browser.new_context(
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/117.0.0.0 Safari/537.36",
+            viewport={"width": 1280, "height": 800},
+            extra_http_headers={"Accept-Language": "en-US,en;q=0.9",
+            "Accept-Encoding": "gzip, deflate, br"},
+        )
+
+        page = await context.new_page()
+
+        await page.goto(EVENT_URL, wait_until='networkidle', timeout=60000)
+        html = await page.content()
+        print(html[:2000])  # first 2000 chars
+
+        try:
+            await page.wait_for_selector("#quickpick-buy-button-qp-0", timeout=30000)
+        except Exception as e:
+            print(f"Selector not found: {e}")
+            await browser.close()
+            return []
+
+        price_txt = await page.inner_text("#quickpick-buy-button-qp-0")
+        await browser.close()
+
+        prices = []
+        try:
+            clean_txt = price_txt.replace("$", "").replace(",", "").strip()
+            prices.append(float(clean_txt))
+        except ValueError:
+            pass
+    return prices
+
+
+def send_discord_alert(message: str):
+    try:
+        resp = requests.post(DISCORD_WEBHOOK, json={"content": message}, timeout=10)
+        if resp.status_code != 204:
+            print(f"Discord webhook failed: {resp.status_code}, {resp.text}")
+    except Exception as e:
+        print(f"Error sending Discord alert: {e}")
+
+
+async def check_prices(proxy_url):
+    prices = await fetch_prices(proxy_url)
+    if not prices:
+        print("No prices found.")
+        send_discord_alert("⚠️ No ticket prices found! LOCK IN!! ‼️")
+        return
+
+    lowest_price = min(prices)
+    #last_alerted_price = get_last_alerted_price()
+    print(f"Lowest price found: ${lowest_price}")
+
+    if lowest_price <= TARGET_PRICE or lowest_price <= 300.0:
+        send_discord_alert(f"🎸 Ticket available for **${lowest_price}**!\n{EVENT_URL}")
+        #update_last_alerted_price(lowest_price)
+        print(f"Alert sent for ${lowest_price}!")
+    else:
+        print("No alert needed.")
+
+async def send_daily_checkin(proxy_url):
+    prices = await fetch_prices(proxy_url)
+    lowest_price = prices[0] if prices else None
+    if lowest_price:
+        send_discord_alert(f"🤑 The lowest ticket price rn is **${lowest_price}**\n{EVENT_URL}")
+    else:
+        send_discord_alert("🤑 No ticket price data yet")
+
+
+def check_time(proxy_url):
+    current_time = datetime.now()
+    target_hour = 22  # 10 PM
+    if current_time.hour == target_hour:
+       asyncio.run(send_daily_checkin(proxy_url))
+
+async def main() -> None:
+    async with Actor:
+        proxy_url = {"server": await setup_proxy()} if os.environ.get("USE_PROXY", "true").lower() == "true" else None
+        await check_prices(proxy_url)
+        check_time(proxy_url)
+
+if __name__ == "__main__":
+    asyncio.run(main())
