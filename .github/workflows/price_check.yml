@@ -23,12 +23,12 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Upload HTML artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: page-html
-          path: page.html
-          retention-days: 1
+      # - name: Upload HTML artifact
+      #   uses: actions/upload-artifact@v4
+      #   with:
+      #     name: page-html
+      #     path: page.html
+      #     retention-days: 1
 
       - name: Run script
         env:
