@@ -42,11 +42,11 @@ def check_prices():
 
 
 def check_time():
-    lowest_price = get_lowest_price()
     current_time = datetime.now()
-    target_hour = 22  # 10 PM
-    if current_time.hour == target_hour:
-       send_discord_alert(f"🤑 The lowest ticket price rn is **${lowest_price}**\n{EVENT_URL}")
+    target_hour = 19  # 10 PM
+    if current_time.hour == 19 or current_time.hour == 10:
+        lowest_price = get_lowest_price()
+        send_discord_alert(f"🤑 The lowest ticket price rn is **${lowest_price}**\n{EVENT_URL}")
 
 
 if __name__ == "__main__":
